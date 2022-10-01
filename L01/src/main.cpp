@@ -15,6 +15,9 @@
 #include "MatrixStack.h"
 #include "Program.h"
 #include "Shape.h"
+#include "Motion.h"
+#include "DAGNode.h"
+#include "Frame.h"
 
 using namespace std;
 
@@ -22,17 +25,33 @@ GLFWwindow *window; // Main application window
 string RES_DIR = ""; // Where data files live
 shared_ptr<Program> prog;
 shared_ptr<Program> prog2; // for drawing with colours
+shared_ptr<Program> prog3; // for drawing axis
+shared_ptr<Program> prog4; // for drawing dag
+
+shared_ptr<Shape> dag;
 shared_ptr<Shape> shape;
+
+shared_ptr<Motion> newMotion;
 
 GLuint vao;	
 GLuint posBufID; // position buffer for drawing a line loop
 GLuint aPosLocation = 0; // location set in col_vert.glsl (or can be queried)
 const GLuint NumVertices = 4;
-GLfloat vertices[NumVertices][3] = {
-					{ -1, -1,  0 },
-					{  1, -1,  0 },
-					{  1,  1,  0 },
-					{ -1,  1,  0 } };
+const GLuint TotNumVertices = 4;
+GLfloat vertices[TotNumVertices][3] = {
+                                    { -1, -1,  0 },
+                                    {  1, -1,  0 },
+                                    {  1,  1,  0 },
+                                    { -1,  1,  0 }};
+
+//frame counter
+GLint fCount = 0;
+//frame control
+GLint isPlaying = 1;
+GLint frameDirection = 1 ; //forwards 1 and backwards = -1
+GLint stepRate = 1 ; //should not go below one
+
+
 
 static void error_callback(int error, const char *description)
 {
@@ -44,6 +63,39 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
 	if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
 		glfwSetWindowShouldClose(window, GL_TRUE);
 	}
+    
+    // increase frame step rate
+    if (key == GLFW_KEY_UP && action == GLFW_PRESS){
+        stepRate ++;
+    }
+    // decrease frame step rate
+    if (key == GLFW_KEY_DOWN && action == GLFW_PRESS){
+        stepRate --;
+        if(stepRate < 1 ){
+            stepRate = 1;
+        }
+    }
+    // toggle direction of animation
+    if (key == GLFW_KEY_ENTER && action == GLFW_PRESS){
+        frameDirection *= -1;
+    }
+    // toggle playing on/off
+    if (key == GLFW_KEY_SPACE && action == GLFW_PRESS){
+        isPlaying = (pow(-1,isPlaying) + 1 ) / 2;
+    }
+    
+}
+
+static void updateFrameCounter(){
+    //update frame counter
+    fCount += frameDirection * isPlaying * stepRate;
+    if(fCount > newMotion->numFrames){
+        fCount= 0 ;
+    }
+    
+    if(fCount < 0){
+        fCount = newMotion->numFrames ;
+    }
 }
 
 static void init()
@@ -61,7 +113,7 @@ static void init()
 	cout << "GL_MAX_VERTEX_ATTRIBS = " << tmp << endl;
 
 	// Set background color.
-	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
 	// Enable z-buffer test.
 	glEnable(GL_DEPTH_TEST);
 
@@ -90,7 +142,10 @@ static void init()
 	prog2->addUniform("col");
 	prog2->addAttribute("aPos");
 	prog2->setVerbose(false);
-	
+    
+    //bvh init
+    newMotion = make_shared<Motion>();
+    newMotion->loadBVH("/Users/rudolfkischer/MCGILL/COMP557/Projects/COMP557-asgn1/L01/resources/OptiTrack-IITSEC2007.bvh");
 	// If there were any OpenGL errors, this will print something.
 	// You can intersperse this line in your code to find the exact location
 	// of your OpenGL error.
@@ -125,7 +180,27 @@ static void render()
 	P->multMatrix(glm::perspective((float)(45.0*M_PI/180.0), aspect, 0.01f, 100.0f));
 	// Apply camera transform.
 	MV->pushMatrix();
-	MV->translate(glm::vec3(0, 0, -3));
+    MV->rotate( 0.25, 1, 0, 0 );
+	MV->translate(glm::vec3(0, -1.4, -3));
+//    GLfloat rot = (fCount % 360) * (M_PI/180);
+//    MV->rotate( rot, 0, 1, 0 );
+//
+    
+    drawAxis(prog2, P, MV);
+    
+    MV->pushMatrix();
+    MV->scale(0.01);
+    GLfloat rot = (180 % 360) * (M_PI/180);
+    MV->rotate( rot, 0, 1, 0 );
+    newMotion->root->draw(prog,
+                          P,
+                          MV,
+                          shape,
+                          newMotion->data,
+                          fCount,
+                          newMotion->numChannels);
+    MV->popMatrix();
+    
 	
 	// Draw teapot.
 	prog->bind();
@@ -146,7 +221,7 @@ static void render()
 	MV->rotate( (float) t, 0, 1, 0 );
 	glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, &P->topMatrix()[0][0]);
 	glUniformMatrix4fv(prog->getUniform("MV"), 1, GL_FALSE, &MV->topMatrix()[0][0]);
-	shape->draw(prog);
+//	shape->draw(prog);
 	MV->popMatrix();
 	prog->unbind();
 	
@@ -166,6 +241,8 @@ static void render()
 	P->popMatrix();
 	
 	GLSL::checkError(GET_FILE_LINE);
+    
+    updateFrameCounter();
 }
 
 int main(int argc, char **argv)

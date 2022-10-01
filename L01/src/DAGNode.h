@@ -14,6 +14,7 @@
 
 class Program;
 class MatrixStack;
+class Shape;
 
 /**
  * This class manages nodes for a character skeleton specified by a bvh file.
@@ -26,7 +27,13 @@ public:
 	virtual ~DAGNode();	
 	void init();
 	// Draws the node and its children.  TODO: modify this method signature if needed!
-	void draw(const std::shared_ptr<Program> prog2, const std::shared_ptr<MatrixStack> MV, float* frameData) const;
+	void draw(const std::shared_ptr<Program> prog,
+              const std::shared_ptr<MatrixStack> P,
+              const std::shared_ptr<MatrixStack> MV,
+              const std::shared_ptr<Shape> shape,
+              float* frameData,
+              GLint fCount,
+              GLint numChannels) const;
 
 	// name of this node (useful for debugging)
 	std::string name;
